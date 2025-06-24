@@ -10,3 +10,7 @@ def task():
 @app.get('/task/1')
 def task():
     return {'task_name':1}
+
+@app.post("/ping")
+def post_test():
+    return {"message": "POST method works"}
