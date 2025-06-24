@@ -3,14 +3,16 @@ from fastapi import FastAPI
 
 app = FastAPI()
 
-@app.get('/')
-def task():
-    return 'This Fast API application'
+# @app.get('/')
+# def task():
+#     return 'This Fast API application'
 
-@app.get('/task/1')
-def task():
-    return {'task_name':1}
+# @app.get('/task/1')
+# def task():
+#     return {'task_name':1}
 
-@app.post("/ping")
-def post_test():
-    return {"message": "POST method works"}
+# @app.post("/ping")
+# def post_test():
+#     return {"message": "POST method works"}
+
+
