@@ -34,6 +34,10 @@ class ShowUser(BaseModel):
     class Config:
         orm_mode = True
 
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
 def get_db():
     db = SessionLocal()
     try:
@@ -71,5 +75,15 @@ def create_user(request : UserCreate, db : Session = Depends(get_db)) :
     return new_user
     
 
+@app.post('/login')
+def login(request: UserLogin, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.username == request.username).first()
+    if not user:
+        return {"error": "Invalid username"}
+
+    if not Hash.verify(user.hashed_password, request.password):
+        return {"error": "Incorrect password"}
+
+    return {"message": f"Welcome {user.username}!"}
 
     
