@@ -3,6 +3,7 @@ from sqlalchemy import create_engine,Integer,String,Column
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker,Session
 from pydantic import BaseModel
+from passlib.context import CryptContext
 
 
 #database creation
@@ -41,6 +42,15 @@ def get_db():
         db.close()
 
 
+pwd_cxt = CryptContext(schemes=["bcrypt"],deprecated = 'auto')
+
+class Hash():
+
+    def bcrypt(password : str):
+        return pwd_cxt.hash(password)
+    
+    def verify(hashed_psw,plain_psw):
+        return pwd_cxt.verify(plain_psw,hashed_psw)
 
 app = FastAPI()
 
@@ -54,7 +64,7 @@ app = FastAPI()
 
 @app.post('/register',status_code=status.HTTP_200_OK,response_model = ShowUser)
 def create_user(request : UserCreate, db : Session = Depends(get_db)) :
-    new_user = User(id=request.id,username=request.username,hashed_password = request.password)
+    new_user = User(username=request.username,hashed_password = Hash.bcrypt(request.password))
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
