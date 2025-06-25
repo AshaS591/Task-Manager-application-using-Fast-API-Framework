@@ -1,9 +1,11 @@
-from fastapi import FastAPI,Depends,status
+from fastapi import FastAPI,Depends,status,HTTPException
 from sqlalchemy import create_engine,Integer,String,Column
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker,Session
 from pydantic import BaseModel
 from passlib.context import CryptContext
+from jose import JWTError, jwt
+from datetime import datetime, timedelta
 
 
 #database creation
@@ -55,6 +57,17 @@ class Hash():
     
     def verify(hashed_psw,plain_psw):
         return pwd_cxt.verify(plain_psw,hashed_psw)
+    
+SECRET_KEY = "asha@task_manager_application"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+def create_access_token(data: dict, expires_delta: timedelta = None):
+    to_encode = data.copy()
+    expire = datetime.now() +  timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
 
 app = FastAPI()
 
@@ -79,11 +92,11 @@ def create_user(request : UserCreate, db : Session = Depends(get_db)) :
 def login(request: UserLogin, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == request.username).first()
     if not user:
-        return {"error": "Invalid username"}
-
+        raise HTTPException(status_code=404, detail="Invalid username")
+    
     if not Hash.verify(user.hashed_password, request.password):
-        return {"error": "Incorrect password"}
+        raise HTTPException(status_code=400, detail="Incorrect password")
 
-    return {"message": f"Welcome {user.username}!"}
-
+    access_token = create_access_token(data={"sub": user.username})
+    return {"access_token": access_token, "token_type": "bearer"}
     
