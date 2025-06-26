@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta
-
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
 #database creation
 SQLALCHEMY_DATABASE_URL = "sqlite:///./taskmanager.db"
@@ -40,6 +40,10 @@ class UserLogin(BaseModel):
     username: str
     password: str
 
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
 def get_db():
     db = SessionLocal()
     try:
@@ -49,25 +53,52 @@ def get_db():
 
 
 pwd_cxt = CryptContext(schemes=["bcrypt"],deprecated = 'auto')
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-class Hash():
 
-    def bcrypt(password : str):
-        return pwd_cxt.hash(password)
-    
-    def verify(hashed_psw,plain_psw):
-        return pwd_cxt.verify(plain_psw,hashed_psw)
-    
 SECRET_KEY = "asha@task_manager_application"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-def create_access_token(data: dict, expires_delta: timedelta = None):
+def bcrypt(password : str):
+    return pwd_cxt.hash(password)
+    
+def verify_hash(plain_psw,hashed_psw):
+    return pwd_cxt.verify(plain_psw,hashed_psw)
+
+def get_user(db: Session, username: str):
+    return db.query(User).filter(User.username == username).first()
+
+def create_access_token(data: dict):
     to_encode = data.copy()
     expire = datetime.now() +  timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
+
+def authenticate_user(db: Session, username: str, password: str):
+    user = get_user(db, username)
+    if not user or not verify_hash(password, user.hashed_password):
+        return None
+    return user
+
+def verify_token(token : str,credentials_exception):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+        token_data = Token(username=username)
+    except JWTError:
+        raise credentials_exception
+
+def get_current_user(token:str =Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    return verify_token(token,credentials_exception)
 
 app = FastAPI()
 
@@ -79,24 +110,33 @@ app = FastAPI()
 # def task():
 #     return {'task_name':1}
 
-@app.post('/register',status_code=status.HTTP_200_OK,response_model = ShowUser)
-def create_user(request : UserCreate, db : Session = Depends(get_db)) :
-    new_user = User(username=request.username,hashed_password = Hash.bcrypt(request.password))
+@app.post('/register',status_code=status.HTTP_200_OK,response_model = Token)
+def register(user : UserCreate, db : Session = Depends(get_db)) :
+    db_user = get_user(db, user.username)
+    if db_user:
+        raise HTTPException(status_code=400, detail="Username already exists")
+    hashed_pw = bcrypt(user.password)
+    new_user = User(username=user.username, hashed_password=hashed_pw)
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    return new_user
+    token = create_access_token(data={"sub": new_user.username})
+    return {"access_token": token, "token_type": "bearer"}
+
     
 
-@app.post('/login')
-def login(request: UserLogin, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == request.username).first()
+@app.post("/token", response_model=Token)
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    print("Username:", form_data.username)
+    print("Password:", form_data.password)
+
+    user = authenticate_user(db, form_data.username, form_data.password)
     if not user:
-        raise HTTPException(status_code=404, detail="Invalid username")
+        raise HTTPException(status_code=401, detail="Incorrect username or password")
     
-    if not Hash.verify(user.hashed_password, request.password):
-        raise HTTPException(status_code=400, detail="Incorrect password")
+    token = create_access_token(data={"sub": user.username})
+    print("Generated Token:", token)
+    return {"access_token": token, "token_type": "bearer"}
 
-    access_token = create_access_token(data={"sub": user.username})
-    return {"access_token": access_token, "token_type": "bearer"}
+
     
