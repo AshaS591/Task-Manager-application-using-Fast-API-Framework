@@ -1,4 +1,4 @@
-from fastapi import FastAPI,Depends,status,HTTPException
+from fastapi import FastAPI,Depends,status,HTTPException,Response
 from sqlalchemy import create_engine,Integer,String,Column,Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker,Session
@@ -51,7 +51,7 @@ class Token(BaseModel):
     access_token: str
     token_type: str
 
-class Task(BaseModel):
+class CreateTask(BaseModel):
     title : str
     description : str
     done : bool
@@ -105,7 +105,7 @@ def verify_token(token : str,credentials_exception):
     except JWTError:
         raise credentials_exception
 
-def get_current_user(token:str =Depends(oauth2_scheme)):
+def get_current_user(token:str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -145,10 +145,38 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 
 
     
-@app.post('/task',response_model=Task)
-def create_task(request : Task, db : Session =Depends(get_db)):
+@app.post('/task')
+def create_task(request : CreateTask, db : Session =Depends(get_db)):
     new_task = Task(title=request.title,description=request.description,done=request.done)
     db.add(new_task)
     db.commit()
     db.refresh(new_task)
     return new_task
+
+@app.get('/tasks')
+def get_all(response : Response,db : Session=Depends(get_db)):
+    tasks = db.query(Task).all()
+    if not tasks:
+        response.status_code=status.HTTP_404_NOT_FOUND
+
+    return tasks
+
+@app.get('/task/{id}')
+def get_task(id : int,db : Session=Depends(get_db)):
+    task = db.query(Task).filter(Task.id==id).first()
+    if not task:
+        return f'Task with id {id} not found'
+    return task
+
+@app.put('/task/{id}',status_code=status.HTTP_202_ACCEPTED)
+def update(id,request:CreateTask,db:Session=Depends(get_db)):
+    update_id = db.query(Task).filter(Task.id==id)
+    if not update_id.first():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f'Task with id {id} you are trying update is not found')
+    update_id.update(request.dict())
+    db.commit()
+    return 'Updated'
+
+@app.delete('task/{id}')
+def destroy(id,db:Session=Depends(get_db)):
+    ...
