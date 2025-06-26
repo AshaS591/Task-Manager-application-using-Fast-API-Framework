@@ -1,5 +1,5 @@
 from fastapi import FastAPI,Depends,status,HTTPException
-from sqlalchemy import create_engine,Integer,String,Column
+from sqlalchemy import create_engine,Integer,String,Column,Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker,Session
 from pydantic import BaseModel
@@ -22,6 +22,13 @@ class User(Base):
     username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
 
+class Task(Base):
+    __tablename__ = "tasks"
+    id = Column(Integer, primary_key=True, index=True,autoincrement=True)
+    title = Column(String)
+    description = Column(String, default="")
+    done = Column(Boolean, default=False)
+
 #Database tables creation
 Base.metadata.create_all(bind=engine)
 
@@ -43,6 +50,12 @@ class UserLogin(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+class Task(BaseModel):
+    title : str
+    description : str
+    done : bool
+
 
 def get_db():
     db = SessionLocal()
@@ -102,14 +115,6 @@ def get_current_user(token:str =Depends(oauth2_scheme)):
 
 app = FastAPI()
 
-# @app.get('/')
-# def task():
-#     return 'This Fast API application'
-
-# @app.get('/task/1')
-# def task():
-#     return {'task_name':1}
-
 @app.post('/register',status_code=status.HTTP_200_OK,response_model = Token)
 def register(user : UserCreate, db : Session = Depends(get_db)) :
     db_user = get_user(db, user.username)
@@ -140,3 +145,10 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
 
 
     
+@app.post('/task',response_model=Task)
+def create_task(request : Task, db : Session =Depends(get_db)):
+    new_task = Task(title=request.title,description=request.description,done=request.done)
+    db.add(new_task)
+    db.commit()
+    db.refresh(new_task)
+    return new_task
