@@ -161,14 +161,14 @@ def get_all(response : Response,db : Session=Depends(get_db)):
 
     return tasks
 
-@app.get('/task/{id}')
+@app.get('/tasks/{id}')
 def get_task(id : int,db : Session=Depends(get_db)):
     task = db.query(Task).filter(Task.id==id).first()
     if not task:
         return f'Task with id {id} not found'
     return task
 
-@app.put('/task/{id}',status_code=status.HTTP_202_ACCEPTED)
+@app.put('/tasks/{id}',status_code=status.HTTP_202_ACCEPTED)
 def update(id,request:CreateTask,db:Session=Depends(get_db)):
     update_id = db.query(Task).filter(Task.id==id)
     if not update_id.first():
@@ -177,6 +177,12 @@ def update(id,request:CreateTask,db:Session=Depends(get_db)):
     db.commit()
     return 'Updated'
 
-@app.delete('task/{id}')
+@app.delete('/tasks/{id}')
 def destroy(id,db:Session=Depends(get_db)):
-    ...
+    delete_id=db.query(Task).filter(Task.id==id)
+    if not delete_id.first():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f'Task with id {id} you are trying delete is not found')
+
+    delete_id.delete(synchronize_session=False)
+    db.commit()
+    return 'Done'
