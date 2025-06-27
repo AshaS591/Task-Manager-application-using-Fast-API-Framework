@@ -33,7 +33,7 @@ class Task(Base):
     owner_id = Column(Integer, ForeignKey("users.id"))
     owner = relationship("User", back_populates="tasks")
 
-#Database tables creation 
+#  Database tables creation 
 Base.metadata.create_all(bind=engine)
 
 
@@ -46,8 +46,9 @@ class UserLogin(BaseModel):
     password: str
 
 class Token(BaseModel):
-    access_token: str
-    token_type: str
+    access_token : str
+    token_type : str
+    response : str
 
 class TokenData(BaseModel):
     username: str | None = None
@@ -57,8 +58,10 @@ class CreateTask(BaseModel):
     description : str
     done : bool = False
 
+class UpdateDoneStatus(BaseModel):
+    done: bool
+
 class ShowUser(BaseModel):
-    # id : int
     username: str
     tasks : List[CreateTask]
     class Config:
@@ -138,9 +141,8 @@ def register(user : UserCreate, db : Session = Depends(get_db)) :
     db.commit()
     db.refresh(new_user)
     token = create_access_token(data={"sub": new_user.username})
-    return {"access_token": token, "token_type": "bearer"}
+    return {"access_token": token, "token_type": "bearer","response":f"{new_user.username}, you registered successfully.."}
 
-    
 
 @app.post("/token", response_model=Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
@@ -148,10 +150,9 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
     if not user:
         raise HTTPException(status_code=401, detail="Incorrect username or password")   
     token = create_access_token(data={"sub": user.username})
-    return {"access_token": token, "token_type": "bearer"}
+    return {"access_token": token, "token_type": "bearer","response":"Logged in successfully.."}
 
 
-    
 @app.post('/task')
 def create_task(request : CreateTask, db : Session =Depends(get_db),current_user: User = Depends(get_current_user)):
     new_task = Task(**request.dict(), owner_id=current_user.id)
@@ -165,7 +166,6 @@ def get_all(response : Response,db : Session=Depends(get_db), current_user: User
     tasks = db.query(Task).filter(Task.owner_id == current_user.id).all()
     if not tasks:
         response.status_code=status.HTTP_404_NOT_FOUND
-
     return tasks
 
 @app.get('/tasks/{id}')
@@ -182,7 +182,7 @@ def update(id,request:CreateTask,db:Session=Depends(get_db),current_user: User =
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f'Task with id {id} you are trying update is not found')
     update_id.update(request.dict())
     db.commit()
-    return 'Updated'
+    return update_id
 
 @app.delete('/tasks/{id}')
 def destroy(id,db:Session=Depends(get_db),current_user: User = Depends(get_current_user)):
@@ -192,4 +192,14 @@ def destroy(id,db:Session=Depends(get_db),current_user: User = Depends(get_curre
 
     delete_id.delete(synchronize_session=False)
     db.commit()
-    return 'Done'
+    return {"response": f"Task with {id} deleted successfully.."}
+
+@app.patch('/tasks/{id}')
+def mark_task_done(id,status_update: UpdateDoneStatus,db: Session=Depends(get_db),current_user: User = Depends(get_current_user)):
+    task = db.query(Task).filter(Task.id == id,Task.owner_id ==current_user.id).first()
+    if not task:
+        raise Exception("Task not found")
+    task.done = status_update.done
+    db.commit()
+    db.refresh(task)
+    return task
